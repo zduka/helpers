@@ -19,7 +19,7 @@ namespace json {
     public:
         Undefined() = default;
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
     private:
         std::string comment_;
     }; // json::Undefined
@@ -32,7 +32,7 @@ namespace json {
     public:
         Null() = default;
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
     private:
         std::string comment_;
     }; // json::Null
@@ -44,7 +44,7 @@ namespace json {
         explicit Bool(bool value):value_{value} {}
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
         operator bool () const { return value_; } 
     private:
@@ -62,7 +62,7 @@ namespace json {
         explicit Int(int value):value_{value} {}
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
         operator int () const { return value_; }
     private:
@@ -80,7 +80,7 @@ namespace json {
         explicit Double(double value):value_{value} {}
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
         operator double () const { return value_; }
     private:
@@ -93,12 +93,12 @@ namespace json {
      */
     class String {
     public:
-        explicit String(std::string const & value):value_{value} {}
+        explicit String(std::string_view value):value_{value} {}
         explicit String(char const * value):value_{value} {}
         explicit String(std::string && value):value_{std::move(value)} {}
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
         size_t size() const { return value_.size(); }
         char const * c_str() const { return value_.c_str(); }
@@ -114,7 +114,7 @@ namespace json {
     public:
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
         Value const & operator [] (size_t i) const { return *elements_[i]; }
         Value & operator [] (size_t i) { return *elements_[i]; }
@@ -134,7 +134,7 @@ namespace json {
     public:
 
         std::string const & comment() const { return comment_; }
-        void setComment(std::string const & comment) { comment_ = comment; }
+        void setComment(std::string_view comment) { comment_ = comment; }
 
     private:
         std::unordered_map<std::string, Value*> elements_; // have to use ptrs (incomplete type)
@@ -172,7 +172,7 @@ namespace json {
         Value(double value): kind_{Kind::Double}, valueDouble_{value} {}
         Value(Double value): kind_{Kind::Double}, valueDouble_{value} {}
 
-        Value(std::string const & value): kind_{Kind::String}, valueString_{value} {}
+        Value(std::string_view value): kind_{Kind::String}, valueString_{value} {}
         Value(std::string && value): kind_{Kind::String}, valueString_{std::move(value)} {}
         Value(char const * value): kind_{Kind::String}, valueString_{value} {}
         Value(String const & value): kind_{Kind::String}, valueString_{value} {}
@@ -267,7 +267,7 @@ namespace json {
             }
         }
 
-        void setComment(std::string const & comment) {
+        void setComment(std::string_view comment) {
             switch (kind_) {
                 case Kind::Undefined:
                     return valueUndefined_.setComment(comment);
@@ -800,11 +800,23 @@ namespace json {
 #if (defined TESTS)
 #include "tests.h"
 
+TEST(json, Undefined) {
+    auto x = json::Undefined{};
+    EXPECT(x.comment().empty());
+    x.setComment("foo");
+    EXPECT_EQ(x.comment(), "foo");
+}
+
 TEST(json, Null) {
     auto x = json::Null{};
     EXPECT(x.comment().empty());
     x.setComment("foo");
-    EXPECT_EQ(x.comment(), "bar");
+    EXPECT_EQ(x.comment(), "foo");
 }
+
+TEST(json, Value) {
+    json::Value v = json::Undefined();
+}
+
 
 #endif

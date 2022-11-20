@@ -31,15 +31,13 @@ public:
 
 protected:
     Tests(char const * filename, size_t line, char const * suiteName, char const * testName):
-        suiteName_{suiteName},
         testName_{testName},
         filename_{filename},
         line_{line} {
-            if (addTest_(suiteName_, testName_, this) == false)
+            if (addTest_(suiteName, testName_, this) == false)
                 throw std::invalid_argument{"Test with same name and suite already exists"};
     }
 
-    std::string const & suiteName() const { return suiteName_; }
     std::string const & testName() const { return testName_; }
 
     template<typename T>
@@ -50,12 +48,11 @@ protected:
     template<typename T>
     bool expect(char const * filename, size_t line, char const * exprStr, T const & expr, char const * msg) {
         UNUSED(msg);
-        ++checks_;
+        ++stats_().testChecks;
         if (expr) 
             return true;
         // if this is the first failed check, print the test info first
-        if (++failed_ == 1)
-            std::cout << "Test " << testName_ << " (" << filename_ << ":" << line_ << "):" << std::endl;
+        addFailure();
         std::cout << "    " << exprStr << " not true at " << filename << ":" << line << std::endl;
         return false;
     }
@@ -68,42 +65,106 @@ protected:
     template<typename T, typename W> 
     bool expectEq(char const * filename, size_t line, char const * expr, T const & x, W const & y, char const * msg) {
         UNUSED(msg);
-        ++checks_;
+        ++stats_().testChecks;
         if (x == y)
             return true;
         // if this is the first failed check, print the test info first
-        if (++failed_ == 1)
-            std::cout << "Test " << testName_ << " (" << filename_ << ":" << line_ << "):" << std::endl;
+        addFailure();
         std::cout << "    " << expr << " not equal, found " << x << ", expected " << y << " at " << filename << ":" << line << std::endl;
         return false;
     }
 
 private:
 
-    std::string suiteName_;
     std::string testName_;
     char const * filename_;
     size_t line_;
 
-    size_t checks_ = 0;
-    size_t failed_ = 0;
-
     virtual void run_() = 0;
+
+    void testHeader() {
+        std::cout << "  " << testName_ << " (" << filename_ << ":" << line_ << "):" << std::endl;
+    }
+
+    void suiteHeader() {
+        std::cout << "Suite " << stats_().suite << ":" << std::endl;
+    }
+
+    void addFailure() {
+        auto & stats = stats_();
+        if (stats.suiteHeader == false) {
+            stats.suiteHeader = true;
+            suiteHeader();
+        }
+        if (++stats.testFails == 1)
+            testHeader();
+    }
 
     static std::unordered_map<std::string, std::unordered_map<std::string, Tests *>> & tests_() {
         static std::unordered_map<std::string, std::unordered_map<std::string, Tests *>> tests;
         return tests;
     } 
 
-    static bool addTest_(std::string const & suiteName, std::string const & testName, Tests * test) {
-        Tests * & t = tests_()[suiteName][testName];
+    static bool addTest_(std::string_view suiteName, std::string_view testName, Tests * test) {
+        Tests * & t = tests_()[std::string{suiteName}][std::string{testName}];
         if (t != nullptr)
             return false;
         t = test;
         return true;
     }
 
-}; // Test
+    /** Running stats about the test suite execution. */
+    struct Stats {
+        size_t suites = 0;
+        size_t failedSuites = 0;
+        size_t totalTests = 0;
+        size_t failedTests = 0;
+        std::string suite;
+        size_t suiteTests = 0;
+        size_t suiteFails = 0;
+        bool suiteHeader = false;
+        size_t testChecks = 0;
+        size_t testFails = 0;
+
+        void startSuite(std::string_view suite) {
+            startTest();
+            suiteTests = 0;
+            suiteHeader = false;
+            suiteFails = 0;
+            this->suite = suite;
+        }
+
+        void finishSuite() {
+            if (suiteFails > 0) 
+                std::cout << "  Test FAIL (" << suiteTests << " tests, " << suiteFails << " failed)" << std::endl;
+            ++suites;
+            if (suiteFails > 0)
+                ++failedSuites;
+            totalTests += suiteTests;
+            failedTests += suiteFails;
+        }
+
+        void startTest() {
+            testChecks = 0;
+            testFails = 0;
+        }
+
+        void finishTest() {
+            if (testFails > 0) {
+                std::cout << "    Suite FAIL (" << testChecks << " checks, " << testFails << " failed)" << std::endl;
+                suiteFails += 1;
+            }
+            ++suiteTests;
+        }
+
+    }; // Tests::Stats
+
+    static Stats & stats_() {
+        static Stats stats;
+        return stats;
+    }
+
+}; // Tests
 
 inline int Tests::run(int argc, char * argv[]) {
     UNUSED(argc);
@@ -112,12 +173,18 @@ inline int Tests::run(int argc, char * argv[]) {
     std::cout << "Target not compiled with -DTESTS. Tests might not be visible." << std::endl;
     #endif
 
+    auto & stats = stats_();
     for (auto const & suite : tests_()) {
+        stats.startSuite(suite.first);
         for (auto const & test : suite.second) {
+            stats.startTest();
             test.second->run_();
+            stats.finishTest();
         }
+        stats.finishSuite();
     }
-
     std::cout << "All done." << std::endl;
+    std::cout << "TOTAL : " << stats.suites << " suites, " << stats.failedSuites << " failed" << std::endl;
+    std::cout << "        " << stats.totalTests << " tests, " << stats.failedTests << " failed" << std::endl;
     return EXIT_SUCCESS;
 }
