@@ -14,4 +14,4 @@ include_directories(${CMAKE_SOURCE_DIR})
 add_definitions(-DTESTS)
 
 file(GLOB_RECURSE SRC  helpers/*.cpp helpers/*.h main.cpp)
-add_executable(helpers ${SRC})
+add_executable(tests ${SRC})
