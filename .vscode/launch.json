@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "helpers",
+            "name": "tests",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/helpers",
+            "program": "${workspaceFolder}/build/tests",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake.exe .. -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_C_COMPILER=C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Tools/Llvm/x64/bin/clang.exe" "-DCMAKE_CXX_COMPILER=C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Tools/Llvm/x64/bin/clang++.exe" -DCOVERAGE=LLVM -G Ninja
+          cmake.exe .. -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_C_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm/x64/bin/clang.exe" "-DCMAKE_CXX_COMPILER=C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/Llvm/x64/bin/clang++.exe" -DCOVERAGE=LLVM -G Ninja
       - name: build-coverage
         run: |
           build-wrapper-win-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build build

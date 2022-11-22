@@ -8,6 +8,11 @@ else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Code Coverage
+if(COVERAGE STREQUAL LLVM) 
+    message(STATUS "Code coverage instrumentation enabled for LLVM")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
 
 include_directories(${CMAKE_SOURCE_DIR})
 
