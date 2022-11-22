@@ -11,6 +11,8 @@ namespace json {
 
     class Value;
 
+    std::ostream & operator << (std::ostream &, Value const &);
+
     /** The undefined value placeholder. 
      
         Does not contain any useful information apart from the optinal comment, exists for unified creation of values via constructors. 
@@ -21,6 +23,13 @@ namespace json {
         std::string const & comment() const { return comment_; }
         void setComment(std::string_view comment) { comment_ = comment; }
     private:
+
+        friend inline std::ostream & operator << (std::ostream & s, Undefined const & json) {
+            UNUSED(json);
+            s << "undefined";
+            return s;
+        }
+
         std::string comment_;
     }; // json::Undefined
 
@@ -34,6 +43,12 @@ namespace json {
         std::string const & comment() const { return comment_; }
         void setComment(std::string_view comment) { comment_ = comment; }
     private:
+        friend inline std::ostream & operator << (std::ostream & s, Null const & json) {
+            UNUSED(json);
+            s << "Null";
+            return s;
+        }
+
         std::string comment_;
     }; // json::Null
 
@@ -47,7 +62,16 @@ namespace json {
         void setComment(std::string_view comment) { comment_ = comment; }
 
         operator bool () const { return value_; } 
+
+        bool operator == (Bool const & other) const { return value_ == other.value_; }
+        bool operator != (Bool const & other) const { return value_ == other.value_; }
+
     private:
+        friend inline std::ostream & operator << (std::ostream & s, Bool const & json) {
+            s << (json.value_ ? "true" : "false");
+            return s;
+        }
+
         bool value_;
         std::string comment_;
 
@@ -65,7 +89,16 @@ namespace json {
         void setComment(std::string_view comment) { comment_ = comment; }
 
         operator int () const { return value_; }
+
+        bool operator == (Int const & other) const { return value_ == other.value_; }
+        bool operator != (Int const & other) const { return value_ == other.value_; }
+
     private:
+        friend inline std::ostream & operator << (std::ostream & s, Int const & json) {
+            s << json.value_;
+            return s;
+        }
+
         int value_;
         std::string comment_;
 
@@ -83,7 +116,17 @@ namespace json {
         void setComment(std::string_view comment) { comment_ = comment; }
 
         operator double () const { return value_; }
+
+        bool operator == (Double const & other) const { return value_ == other.value_; }
+        bool operator != (Double const & other) const { return value_ == other.value_; }
+
     private:
+
+        friend inline std::ostream & operator << (std::ostream & s, Double const & json) {
+            s << json.value_;
+            return s;
+        }
+
         double value_;
         std::string comment_;
 
@@ -102,7 +145,17 @@ namespace json {
 
         size_t size() const { return value_.size(); }
         char const * c_str() const { return value_.c_str(); }
+
+        bool operator == (String const & other) const { return value_ == other.value_; }
+        bool operator != (String const & other) const { return value_ == other.value_; }
+
     private:
+        friend inline std::ostream & operator << (std::ostream & s, String const & json) {
+            // TODO quote the string if necessary
+            s << '"' << json.value_ << '"';
+            return s;
+        }
+
         std::string value_;
         std::string comment_;
 
@@ -113,6 +166,8 @@ namespace json {
     class Array {
     public:
 
+        ~Array();
+
         std::string const & comment() const { return comment_; }
         void setComment(std::string_view comment) { comment_ = comment; }
 
@@ -122,7 +177,38 @@ namespace json {
         void add(Value const & value);
         void add(Value && value);
 
+        bool operator == (Array const & other) const {
+            if (elements_.size() != other.elements_.size())
+                return false;
+            for (size_t i = 0, e = elements_.size(); i < e; ++i)
+                if (elements_[i] != other.elements_[i])
+                    return false;
+            return true;
+        }
+
+        bool operator != (Array const & other) const { 
+            if (elements_.size() != other.elements_.size())
+                return true;
+            for (size_t i = 0, e = elements_.size(); i < e; ++i)
+                if (elements_[i] != other.elements_[i])
+                    return true;
+            return false;
+        }
+
     private:
+
+        friend inline std::ostream & operator << (std::ostream & s, Array const & json) {
+            s << "[";
+            auto i = json.elements_.begin(), e = json.elements_.end();
+            while (i != e) {
+                s << **i;
+                if (++i != e)
+                    s << ", ";
+            }
+            s << "]";
+            return s;
+        }
+
         std::vector<Value*> elements_; // have to use ptrs (incomplete type)
         std::string comment_;
 
@@ -133,11 +219,55 @@ namespace json {
     class Struct {
     public:
 
+        ~Struct();
+
         std::string const & comment() const { return comment_; }
         void setComment(std::string_view comment) { comment_ = comment; }
 
+        Value const & operator [] (size_t i) const { return *(elements_[i].second); }
+        Value & operator [] (size_t i) { return *(elements_[i].second); }
+
+
+        Value const & operator [] (std::string const & i) const;
+        Value & operator [] (std::string const & i);
+
+        void set(std::string const & name, Value const & value);
+        void set(std::string const & name, Value && value);
+
+        bool operator == (Struct const & other) const {
+            if (elements_.size() != other.elements_.size())
+                return false;
+            for (size_t i = 0, e = elements_.size(); i < e; ++i)
+                if (elements_[i] != other.elements_[i])
+                    return false;
+            return true;
+        }
+
+        bool operator != (Struct const & other) const { 
+            if (elements_.size() != other.elements_.size())
+                return true;
+            for (size_t i = 0, e = elements_.size(); i < e; ++i)
+                if (elements_[i] != other.elements_[i])
+                    return true;
+            return false;
+        }
+
     private:
-        std::unordered_map<std::string, Value*> elements_; // have to use ptrs (incomplete type)
+
+        friend inline std::ostream & operator << (std::ostream & s, Struct const & json) {
+            s << "{";
+            auto i = json.elements_.begin(), e = json.elements_.end();
+            while (i != e) {
+                s << '"' << i->first << "\" : " << *(i->second);
+                if (++i != e)
+                    s << ", ";
+            }
+            s << "}";
+            return s;
+        }
+
+        std::vector<std::pair<std::string, Value*>> elements_; // have to use ptrs (incomplete type)
+        std::unordered_map<std::string, size_t> elementsByName_; 
         std::string comment_;
     }; // json::Struct
 
@@ -354,7 +484,67 @@ namespace json {
             return *this;
         }
 
+        bool operator == (Value const & other) const {
+            if (kind_ != other.kind_)
+                return false;
+            switch (kind_) {
+                case Kind::Undefined:
+                case Kind::Null:
+                    return true;
+                case Kind::Bool:
+                    return valueBool_ == other.valueBool_;
+                case Kind::Int:
+                    return valueInt_ == other.valueInt_;
+                case Kind::Double:
+                    return valueDouble_ == other.valueDouble_;
+                case Kind::String:
+                    return valueString_ == other.valueString_;
+                case Kind::Array:
+                    return valueArray_ == other.valueArray_;
+                case Kind::Struct:
+                    return valueStruct_ == other.valueStruct_;
+            }
+        }
+
+        friend bool operator == (Undefined const & a, Value const & b) { return b == a; }
+        friend bool operator == (Null const & a, Value const & b) { return b == a; }
+        friend bool operator == (Int const & a, Value const & b) { return b == a; }
+        friend bool operator == (Double const & a, Value const & b) { return b == a; }
+        friend bool operator == (String const & a, Value const & b) { return b == a; }
+        friend bool operator == (Array const & a, Value const & b) { return b == a; }
+        friend bool operator == (Struct const & a, Value const & b) { return b == a; }
+
     private:
+
+        friend inline std::ostream & operator << (std::ostream & s, Value const & json) {
+            switch (json.kind_) {
+                case Kind::Undefined:
+                    s << json.valueUndefined_;
+                    break;
+                case Kind::Null:
+                    s << json.valueNull_;
+                    break;
+                case Kind::Bool:
+                    s << json.valueBool_;
+                    break;
+                case Kind::Int:
+                    s << json.valueInt_;
+                    break;
+                case Kind::Double:
+                    s << json.valueDouble_;
+                    break;
+                case Kind::String:
+                    s << json.valueString_;
+                    break;
+                case Kind::Array:
+                    s << json.valueArray_;
+                    break;
+                case Kind::Struct:
+                    s << json.valueStruct_;
+                    break;
+            }
+            return s;
+        }
 
         void detach() {
             switch (kind_) {
@@ -390,6 +580,10 @@ namespace json {
 
     }; // json::Value
 
+    /** The undefined singleton that is returned by any unsupported operation. 
+     */
+    inline const Value undefined = Value{Undefined{}};
+
     template<> 
     inline Bool const & Value::as() const {
         if (kind_ != Kind::Bool)
@@ -418,6 +612,11 @@ namespace json {
         return valueInt_;
     }
 
+    inline Array::~Array() {
+        for (auto e : elements_) 
+            delete e;
+    }
+
     inline void Array::add(Value const & value) {
         elements_.push_back(new Value{value});
     }
@@ -426,13 +625,37 @@ namespace json {
         elements_.push_back(new Value{std::move(value)});
     }
 
+    inline Struct::~Struct() {
+        for (auto e : elements_) 
+            delete e.second;
+    }
 
+
+    inline Value const & Struct::operator [] (std::string const & i) const {
+        auto it = elementsByName_.find(i);
+        if (it == elementsByName_.end())
+            return json::undefined;
+        else
+            return *elements_[it->second].second;
+    }
+
+    inline Value & Struct::operator [] (std::string const & i) {
+        auto it = elementsByName_.find(i);
+        if (it == elementsByName_.end()) {
+            it = elementsByName_.insert(std::make_pair(i, elementsByName_.size())).first;
+            elements_.push_back(std::make_pair(i, new Value{Undefined{}}));
+        }
+        return *elements_[it->second].second;
+    }
+
+    inline void Struct::set(std::string const & name, Value const & value) { (*this)[name] = value; }
+    inline void Struct::set(std::string const & name, Value && value) { (*this)[name] = std::move(value); }
 
 
     /** Parses the given stream and returns the JSON object. 
      */
     inline Value parse(std::istream & s) {
-        return Value{};
+        return parse(s);
     }
 
     /** Parses the given string and returns the JSON object. 
@@ -530,6 +753,8 @@ namespace json {
                     case Kind::String:
                     case Kind::Comment:
                         valueString_.~string();
+                        break;
+                    default: // no need to detach anyting in this case
                         break;
                 }
             }
@@ -805,6 +1030,8 @@ TEST(json, Undefined) {
     EXPECT(x.comment().empty());
     x.setComment("foo");
     EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "undefined");
+    EXPECT_EQ(x, json::undefined);
 }
 
 TEST(json, Null) {
@@ -812,10 +1039,71 @@ TEST(json, Null) {
     EXPECT(x.comment().empty());
     x.setComment("foo");
     EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "Null");
 }
 
-TEST(json, Value) {
-    json::Value v = json::Undefined();
+TEST(json, Bool) {
+    auto x = json::Bool{true};
+    EXPECT(x.comment().empty());
+    x.setComment("foo");
+    EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "true");
+    auto y = json::Bool{false};
+    EXPECT_EQ(STR(y), "false");
+}
+
+TEST(json, Int) {
+    auto x = json::Int{0};
+    EXPECT(x.comment().empty());
+    x.setComment("foo");
+    EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "0");
+    x = json::Int{-56};
+    EXPECT_EQ(STR(x), "-56");
+}
+
+TEST(json, Double) {
+    auto x = json::Double{-0.1};
+    EXPECT(x.comment().empty());
+    x.setComment("foo");
+    EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "-0.1");
+    x = json::Double{56.5};
+    EXPECT_EQ(STR(x), "56.5");
+}
+
+TEST(json, String) {
+    auto x = json::String{"foobar"};
+    EXPECT(x.comment().empty());
+    x.setComment("foo");
+    EXPECT_EQ(x.comment(), "foo");
+    EXPECT_EQ(STR(x), "\"foobar\"");
+}
+
+TEST(json, Array) {
+    auto x = json::Array{};
+    x.add(4);
+    x.add(5.6);
+    x.add(true);
+    x.add(false);
+    x.add("foo");
+    x.add(json::Null{});
+    x.add(json::Undefined{});
+    EXPECT_EQ(STR(x), "[4, 5.6, true, false, \"foo\", Null, undefined]");
+}
+
+TEST(json, Struct) {
+    auto x = json::Struct{};
+    x.set("foo", "bar");
+    x["bar"] = true;
+    EXPECT_EQ(STR(x), "{\"foo\" : \"bar\", \"bar\" : true}");
+    EXPECT_EQ(x["zaza"], json::undefined);
+    EXPECT_EQ(STR(x), "{\"foo\" : \"bar\", \"bar\" : true, \"zaza\" : undefined}");
+}
+
+TEST(json, parseNull) {
+    //json::Value v = json::parse("Null");
+    //EXPECT_EQ(STR(v), STR(json::Null{}));
 }
 
 

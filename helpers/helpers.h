@@ -7,3 +7,7 @@
 /** Marks given argument as unused so that the compiler will stop giving warnings about it when extra warnings are enabled. 
  */
 #define UNUSED(ARG_NAME) (void)(ARG_NAME)
+
+#define UNIMPLEMENTED 
+
+#define UNREACHABLE 
