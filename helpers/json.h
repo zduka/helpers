@@ -7,7 +7,34 @@
 
 #include "helpers.h"
 
+/** Rather simple and permissive JSON manipulation library. 
+ 
+    Supports the canonical JSON with some extra features:
+
+    - `undefined` is allowed as well
+    - trailing commas in arrays and structs are ok
+    - JavaScript style comments are supported and attached to json values
+*/
 namespace json {
+
+    /**  JSON serialization and deserialization error. 
+     */
+    struct Error : std::invalid_argument {
+        size_t line;
+        size_t col;
+
+        Error(std::string const & str, size_t line, size_t col):
+            std::invalid_argument{str},
+            line{line},
+            col{col} {
+        }
+
+        friend std::ostream & operator << (std::ostream & s, Error const & e) {
+            s << e.what() << " (line " << e.line << ", col " << e.col << ")";
+            return s;
+        }
+
+    }; // json::Error
 
     class Value;
 
@@ -45,7 +72,7 @@ namespace json {
     private:
         friend inline std::ostream & operator << (std::ostream & s, Null const & json) {
             UNUSED(json);
-            s << "Null";
+            s << "null";
             return s;
         }
 
@@ -165,6 +192,14 @@ namespace json {
      */
     class Array {
     public:
+        Array() = default;
+        Array(Array const & from):
+            comment_{from.comment_} {
+            for (Value * v : from.elements_)
+                add(*v);
+        }
+
+        Array(Array &&) = default;
 
         ~Array();
 
@@ -218,6 +253,16 @@ namespace json {
      */
     class Struct {
     public:
+
+        Struct() = default;
+        Struct(Struct const & from):
+            comment_{from.comment_} {
+            for (auto i : from.elements_) {
+                set(i.first, *i.second);
+            }
+        }
+        
+        Struct(Struct &&) = default;
 
         ~Struct();
 
@@ -394,6 +439,8 @@ namespace json {
                     return valueArray_.comment();
                 case Kind::Struct:
                     return valueStruct_.comment();
+                default:
+                    UNREACHABLE;
             }
         }
 
@@ -453,7 +500,7 @@ namespace json {
             return *this;
         }
 
-        Value & operator = (Value const && other) {
+        Value & operator = (Value && other) {
             detach();
             kind_ = other.kind_;
             switch (kind_) {
@@ -503,6 +550,8 @@ namespace json {
                     return valueArray_ == other.valueArray_;
                 case Kind::Struct:
                     return valueStruct_ == other.valueStruct_;
+                default:
+                    UNREACHABLE;
             }
         }
 
@@ -651,20 +700,6 @@ namespace json {
     inline void Struct::set(std::string const & name, Value const & value) { (*this)[name] = value; }
     inline void Struct::set(std::string const & name, Value && value) { (*this)[name] = std::move(value); }
 
-
-    /** Parses the given stream and returns the JSON object. 
-     */
-    inline Value parse(std::istream & s) {
-        return parse(s);
-    }
-
-    /** Parses the given string and returns the JSON object. 
-     */
-    inline Value parse(char const * str) {
-        std::stringstream s{str};
-        return parse(s);
-    }
-
     /** A rather simle and permissive JSON parser. 
      
         Aside from the proper JSON it also supports comments, trailing commas, literal names and so on. 
@@ -716,7 +751,7 @@ namespace json {
                 detach();
             }
 
-            Token & operator = (Token const && from) {
+            Token & operator = (Token && from) {
                 detach();
                 line = from.line;
                 col = from.col;
@@ -794,7 +829,7 @@ namespace json {
                     return Value{t.valueDouble_};
                 case Token::Kind::String:
                     return Value{t.valueString_};
-                // '[' [ value ] { ',' value } [ ',' ] ']'
+                // '[' [ value  { ',' value } [ ',' ] ] ']'
                 case Token::Kind::SquareOpen: {
                     Array i{};
                     Token t = next();
@@ -806,22 +841,44 @@ namespace json {
                             if (t.kind == Token::Kind::SquareClose)
                                 break;
                             i.add(parse(t));
+                            t = next();
                         }
                         if (t.kind != Token::Kind::SquareClose) 
                             throw "error";
                     }
                     return i;
                 }
-                // '{' [ string = value ]}
+                // '{' [ string | ident = value { ',' string | ident = value } [ ',' ] ] '}'
                 case Token::Kind::CurlyOpen: {
                     Struct i{};
-
-                    // TODO
+                    Token t = next();
+                    if (t.kind != Token::Kind::CurlyClose) {
+                        addStructField(i, t);
+                        t = next();
+                        while (t.kind == Token::Kind::Comma) {
+                            t = next();
+                            if (t.kind == Token::Kind::CurlyClose)
+                                break;
+                            addStructField(i, t);
+                            t = next();
+                        }            
+                        if (t.kind != Token::Kind::CurlyClose) 
+                            throw "error";
+                    }
                     return i;
                 }
 
 
             }
+        }
+
+        void addStructField(Struct & s, Token const & t) {
+            if (t.kind != Token::Kind::Identifier && t.kind != Token::Kind::String)
+                throw "Expected identifier or a string";
+            std::string fieldName = t.valueString_;
+            if (next().kind != Token::Kind::Colon)
+                throw "Expected colon";
+            s.set(fieldName, parse(next()));
         }
 
         Value parseWithComment(std::string comment) {
@@ -861,6 +918,8 @@ namespace json {
                     case '"':
                     case '\'':
                         return Token{l_, c_, Token::Kind::String, nextString(l_, c_, c)};
+                    case '-':
+                        return nextNumber(l_, c_, c);
                     case ' ':
                     case '\t':
                     case '\n':
@@ -917,7 +976,9 @@ namespace json {
                 if (eof())
                     error(l, c, "unterminated string literal");
                 char c = nextChar();
-                if (c == '\\') { 
+                if (c == delimiter) {
+                    break;
+                } else if (c == '\\') { 
                     char c = nextChar();
                     switch (c) {
                         case '"':
@@ -965,14 +1026,27 @@ namespace json {
         }
 
         Token nextNumber(size_t l, size_t c, char start) {
+            bool neg = false;
+            while (start == '-') {
+                neg = ! neg;
+                start = nextChar();
+            }
+            if (! isDigit(start))
+                error("invalid number character");
             int result = (start - '0');
             while (isDigit(peekChar()))
                 result = result * 10 + (nextChar() - '0');
             if (peekChar() == '.') {
                 nextChar();
-                throw "";
+                double dresult = result;
+                double div = 10.0;
+                while (isDigit(peekChar())) {
+                    dresult += (nextChar() - '0') / div;
+                    div *= 10;
+                }
+                return Token{l, c, Token::Kind::Double, neg ? -dresult : dresult};
             } else {
-                return Token{l, c, Token::Kind::Int, result};
+                return Token{l, c, Token::Kind::Int, neg ? -result : result};
             }
         }
 
@@ -1014,6 +1088,19 @@ namespace json {
 
     }; // json::Value::Parser
 
+    /** Parses the given stream and returns the JSON object. 
+     */
+    inline Value parse(std::istream & s) {
+        Value::Parser p{s};
+        return p.parse();
+    }
+
+    /** Parses the given string and returns the JSON object. 
+     */
+    inline Value parse(char const * str) {
+        std::stringstream s{str};
+        return parse(s);
+    }
 
 
     // TODO serialize
@@ -1039,7 +1126,7 @@ TEST(json, Null) {
     EXPECT(x.comment().empty());
     x.setComment("foo");
     EXPECT_EQ(x.comment(), "foo");
-    EXPECT_EQ(STR(x), "Null");
+    EXPECT_EQ(STR(x), "null");
 }
 
 TEST(json, Bool) {
@@ -1089,7 +1176,7 @@ TEST(json, Array) {
     x.add("foo");
     x.add(json::Null{});
     x.add(json::Undefined{});
-    EXPECT_EQ(STR(x), "[4, 5.6, true, false, \"foo\", Null, undefined]");
+    EXPECT_EQ(STR(x), "[4, 5.6, true, false, \"foo\", null, undefined]");
 }
 
 TEST(json, Struct) {
@@ -1101,10 +1188,38 @@ TEST(json, Struct) {
     EXPECT_EQ(STR(x), "{\"foo\" : \"bar\", \"bar\" : true, \"zaza\" : undefined}");
 }
 
-TEST(json, parseNull) {
-    //json::Value v = json::parse("Null");
-    //EXPECT_EQ(STR(v), STR(json::Null{}));
+TEST(json, parse) {
+    json::Value v = json::parse("null");
+    EXPECT_EQ(v, json::Null{});
+    v = json::parse("undefined");
+    EXPECT_EQ(v, json::Undefined{});
+    v = json::parse("true");
+    EXPECT_EQ(v, json::Bool{true});
+    v = json::parse("false");
+    EXPECT_EQ(v, json::Bool{false});
+    v = json::parse("1");
+    EXPECT_EQ(v, json::Int{1});
+    v = json::parse("-671");
+    EXPECT_EQ(v, json::Int{-671});
+    v = json::parse("--67");
+    EXPECT_EQ(v, json::Int{67});
+    v = json::parse("9.7");
+    EXPECT_EQ(v, json::Double{9.7});
+    v = json::parse("\"foo\"");
+    EXPECT_EQ(v, json::String{"foo"});
+    v = json::parse("[ 1, 2 ]");
+    EXPECT_EQ(STR(v), "[1, 2]");
+    v = json::parse("[ 1, 2, ]");
+    EXPECT_EQ(STR(v), "[1, 2]");
+    v = json::parse("{ \"foo\" : 56 }");
+    EXPECT_EQ(STR(v), "{\"foo\" : 56}");
 }
 
+TEST(json, parseComments) {
+    json::Value v = json::parse("/* this is null */ null");
+    EXPECT_EQ(v.comment(), " this is null ");
+    // TODO trim the comment (on line by line basis)
+
+}
 
 #endif

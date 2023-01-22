@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cassert>
+
 #include <sstream>
 
 #define STR(...) static_cast<std::stringstream &&>(std::stringstream() << __VA_ARGS__).str()
@@ -8,6 +10,6 @@
  */
 #define UNUSED(ARG_NAME) (void)(ARG_NAME)
 
-#define UNIMPLEMENTED 
+#define UNIMPLEMENTED assert(false && "inimplemented") 
 
-#define UNREACHABLE 
+#define UNREACHABLE assert(false && "unreachable") 
